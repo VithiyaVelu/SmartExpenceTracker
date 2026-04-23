@@ -1,118 +1,82 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../services/auth_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
-  bool _isLoading = true;
+
+  bool _isLoading = false;
   bool _isAuthenticated = false;
-  bool _hasSkippedAuth = false;
   String? _errorMessage;
 
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
-  bool get hasSkippedAuth => _hasSkippedAuth;
   String? get errorMessage => _errorMessage;
-  bool get firebaseAvailable => _authService.isFirebaseInitialized;
 
-  AuthProvider() {
-    _initialize();
-  }
+  String _handleAuthError(Object error) {
+    final message = error.toString().toLowerCase();
 
-  Future<void> _initialize() async {
-    await _loadAuthPreferences();
-
-    if (_authService.isFirebaseInitialized) {
-      _isAuthenticated = _authService.currentUser != null;
+    if (message.contains('password must be at least 6 characters')) {
+      return 'Password must be at least 6 characters';
     }
 
-    _isLoading = false;
-    notifyListeners();
+    if (message.contains('invalid email or password')) {
+      return 'Invalid email or password';
+    }
+
+    return 'Something went wrong. Please try again.';
   }
 
-  Future<void> _loadAuthPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    _hasSkippedAuth = prefs.getBool('has_skipped_auth') ?? false;
-  }
-
-  Future<void> _saveAuthPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('has_skipped_auth', _hasSkippedAuth);
-  }
-
+  // LOGIN
   Future<void> signIn(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      await _authService.signIn(email, password);
-      _isAuthenticated = true;
-      _hasSkippedAuth = false;
-      await _saveAuthPreferences();
-    } catch (e) {
-      _errorMessage = e.toString();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
+      bool success = await _authService.login(email, password);
 
-  Future<void> signUp(String email, String password, String name) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      await _authService.signUp(email, password, name);
-      _isAuthenticated = true;
-      _hasSkippedAuth = false;
-      await _saveAuthPreferences();
-    } catch (e) {
-      _errorMessage = e.toString();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> signOut() async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      if (_authService.isFirebaseInitialized) {
-        await _authService.signOut();
+      if (success) {
+        _isAuthenticated = true;
+      } else {
+        _errorMessage = _handleAuthError('invalid email or password');
       }
-      _isAuthenticated = false;
-      _hasSkippedAuth = false;
-      await _saveAuthPreferences();
     } catch (e) {
-      _errorMessage = e.toString();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
+      _errorMessage = _handleAuthError(e);
     }
-  }
 
-  Future<void> skipAuth() async {
-    _hasSkippedAuth = true;
-    _isAuthenticated = false;
-    await _saveAuthPreferences();
+    _isLoading = false;
     notifyListeners();
   }
 
-  Future<void> syncToCloud() async {
-    if (!_authService.isFirebaseInitialized) {
-      throw Exception(
-        'Firebase is not initialized. Cloud sync is unavailable.',
-      );
+  // REGISTER
+  Future<void> signUp(String email, String password) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      if (password.length < 6) {
+        throw Exception('Password must be at least 6 characters');
+      }
+      await _authService.register(email, password);
+      _isAuthenticated = true;
+    } catch (e) {
+      _errorMessage = _handleAuthError(e);
     }
-    if (!_isAuthenticated) {
-      throw Exception('You must be signed in to sync data.');
-    }
-    // TODO: Implement real sync logic once cloud syncing is available.
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  // LOGOUT
+  Future<void> signOut() async {
+    _isAuthenticated = false;
+    notifyListeners();
+  }
+
+  // 👉 ADD THIS HERE (your missing method)
+  Future<void> skipAuth() async {
+    _isAuthenticated = true;
+    notifyListeners();
   }
 }

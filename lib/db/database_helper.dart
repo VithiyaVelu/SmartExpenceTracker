@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:sembast/sembast.dart';
 import 'package:sembast_web/sembast_web.dart';
 import 'package:sembast/sembast_io.dart';
 import 'package:path/path.dart' as p;
@@ -47,6 +46,21 @@ class DBHelper {
     final db = await database;
     final store = intMapStoreFactory.store(storeName);
     final records = await store.find(db, finder: Finder(sortOrders: [SortOrder(Field.key, false)]));
+    return records.map((record) {
+      final expense = Expense.fromMap(record.value);
+      expense.id = record.key;
+      return expense;
+    }).toList();
+  }
+
+  Future<List<Expense>> getExpensesByRecurringId(int recurringId) async {
+    final db = await database;
+    final store = intMapStoreFactory.store(storeName);
+    final records = await store.find(
+      db,
+      finder: Finder(filter: Filter.equals('recurring_id', recurringId)),
+    );
+
     return records.map((record) {
       final expense = Expense.fromMap(record.value);
       expense.id = record.key;
@@ -183,4 +197,3 @@ class DBHelper {
     await intMapStoreFactory.store(recurringStoreName).drop(db);
   }
 }
-

@@ -1,47 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../db/database_helper.dart';
 import '../models/expense.dart';
 import '../utils/currency_service.dart';
+import '../providers/expense_provider.dart';
 import '../providers/theme_provider.dart';
 
 class AdvancedAnalyticsScreen extends StatefulWidget {
   const AdvancedAnalyticsScreen({super.key});
 
   @override
-  State<AdvancedAnalyticsScreen> createState() => _AdvancedAnalyticsScreenState();
+  State<AdvancedAnalyticsScreen> createState() =>
+      _AdvancedAnalyticsScreenState();
 }
 
 class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
-  final DBHelper db = DBHelper();
   List<Expense> allExpenses = [];
-  
+  ExpenseProvider? _expenseProvider;
+
   String selectedPeriod = 'Month'; // Month, Quarter, Year
   DateTime selectedDate = DateTime.now();
-  
+
   Map<String, double> monthlySpending = {};
   Map<String, double> categoryTrends = {};
   double totalYearSpending = 0;
   double averageMonthlySpending = 0;
   double highestMonthSpending = 0;
   String highestSpendingMonth = '';
-  
+
   List<SpendingInsight> insights = [];
 
   @override
   void initState() {
     super.initState();
-    loadAnalyticsData();
   }
 
-  Future<void> loadAnalyticsData() async {
-    final expenses = await db.getExpenses();
-    
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<ExpenseProvider>();
+    if (_expenseProvider != provider) {
+      _expenseProvider?.removeListener(_syncExpenses);
+      _expenseProvider = provider;
+      _expenseProvider!.addListener(_syncExpenses);
+      _syncExpenses();
+    }
+  }
+
+  @override
+  void dispose() {
+    _expenseProvider?.removeListener(_syncExpenses);
+    super.dispose();
+  }
+
+  void _syncExpenses() {
+    final expenses = _expenseProvider?.expenses ?? const <Expense>[];
+    if (!mounted) {
+      allExpenses = expenses;
+      return;
+    }
+
     setState(() {
       allExpenses = expenses;
     });
-    
     _calculateMetrics();
     _generateInsights();
   }
@@ -49,23 +70,27 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
   void _calculateMetrics() {
     final monthlyMap = <String, double>{};
     final categoryMap = <String, double>{};
-    
+
     // Group expenses by month
     for (final exp in allExpenses) {
       if (exp.type == 'expense') {
-        final amountInBase = CurrencyService.convertToBase(exp.amount, exp.currency);
+        final amountInBase = CurrencyService.convertToBase(
+          exp.amount,
+          exp.currency,
+        );
         final monthKey = exp.date.substring(0, 7); // YYYY-MM
-        
+
         monthlyMap[monthKey] = (monthlyMap[monthKey] ?? 0) + amountInBase;
-        categoryMap[exp.category] = (categoryMap[exp.category] ?? 0) + amountInBase;
+        categoryMap[exp.category] =
+            (categoryMap[exp.category] ?? 0) + amountInBase;
       }
     }
-    
+
     // Calculate statistics
     double yearTotal = 0;
     double maxMonth = 0;
     String maxMonthKey = '';
-    
+
     for (final entry in monthlyMap.entries) {
       yearTotal += entry.value;
       if (entry.value > maxMonth) {
@@ -73,12 +98,14 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
         maxMonthKey = entry.key;
       }
     }
-    
+
     setState(() {
       monthlySpending = monthlyMap;
       categoryTrends = categoryMap;
       totalYearSpending = yearTotal;
-      averageMonthlySpending = monthlyMap.isEmpty ? 0 : yearTotal / monthlyMap.length;
+      averageMonthlySpending = monthlyMap.isEmpty
+          ? 0
+          : yearTotal / monthlyMap.length;
       highestMonthSpending = maxMonth;
       highestSpendingMonth = maxMonthKey;
     });
@@ -86,44 +113,50 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
 
   void _generateInsights() {
     final newInsights = <SpendingInsight>[];
-    
+
     if (highestMonthSpending > averageMonthlySpending * 1.5) {
       newInsights.add(
         SpendingInsight(
           title: 'High Spending Alert',
-          description: '$highestSpendingMonth had ${((highestMonthSpending / averageMonthlySpending - 1) * 100).toStringAsFixed(0)}% higher spending than average',
+          description:
+              '$highestSpendingMonth had ${((highestMonthSpending / averageMonthlySpending - 1) * 100).toStringAsFixed(0)}% higher spending than average',
           severity: 'high',
           icon: Icons.trending_up,
         ),
       );
     }
-    
+
     // Find top spending category
     if (categoryTrends.isNotEmpty) {
-      final topCategory = categoryTrends.entries.reduce((a, b) => a.value > b.value ? a : b);
+      final topCategory = categoryTrends.entries.reduce(
+        (a, b) => a.value > b.value ? a : b,
+      );
       newInsights.add(
         SpendingInsight(
           title: 'Top Spending Category',
-          description: '${topCategory.key} accounts for ${((topCategory.value / totalYearSpending) * 100).toStringAsFixed(0)}% of total spending',
+          description:
+              '${topCategory.key} accounts for ${((topCategory.value / totalYearSpending) * 100).toStringAsFixed(0)}% of total spending',
           severity: 'info',
           icon: Icons.pie_chart,
         ),
       );
     }
-    
+
     // Monthly trend analysis
     if (monthlySpending.length >= 2) {
-      final sortedMonths = monthlySpending.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+      final sortedMonths = monthlySpending.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
       if (sortedMonths.length >= 2) {
         final lastMonth = sortedMonths[sortedMonths.length - 1].value;
         final prevMonth = sortedMonths[sortedMonths.length - 2].value;
         final changePercent = ((lastMonth - prevMonth) / prevMonth * 100);
-        
+
         if (changePercent > 10) {
           newInsights.add(
             SpendingInsight(
               title: 'Spending Increase',
-              description: 'Your spending increased by ${changePercent.toStringAsFixed(0)}% compared to last month',
+              description:
+                  'Your spending increased by ${changePercent.toStringAsFixed(0)}% compared to last month',
               severity: 'warning',
               icon: Icons.warning,
             ),
@@ -132,7 +165,8 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
           newInsights.add(
             SpendingInsight(
               title: 'Great Job!',
-              description: 'You reduced spending by ${(-changePercent).toStringAsFixed(0)}% compared to last month',
+              description:
+                  'You reduced spending by ${(-changePercent).toStringAsFixed(0)}% compared to last month',
               severity: 'success',
               icon: Icons.thumb_up,
             ),
@@ -140,7 +174,7 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
         }
       }
     }
-    
+
     setState(() {
       insights = newInsights;
     });
@@ -149,8 +183,12 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final currencySymbol = CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$';
-    
+    final currencySymbol =
+        CurrencyService.getCurrencyByCode(
+          CurrencyService.baseCurrency,
+        )?.symbol ??
+        '\$';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Advanced Analytics'),
@@ -165,23 +203,23 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
             // Period Selector
             _buildPeriodSelector(themeProvider),
             const SizedBox(height: 24),
-            
+
             // Key Metrics
             _buildKeyMetrics(currencySymbol, themeProvider),
             const SizedBox(height: 24),
-            
+
             // Monthly Spending Chart
             _buildMonthlyChart(themeProvider),
             const SizedBox(height: 24),
-            
+
             // Category Breakdown
             _buildCategoryBreakdown(currencySymbol, themeProvider),
             const SizedBox(height: 24),
-            
+
             // Insights
             _buildInsights(themeProvider),
             const SizedBox(height: 24),
-            
+
             // Spending Patterns
             _buildSpendingPatterns(currencySymbol, themeProvider),
           ],
@@ -206,7 +244,9 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
                 backgroundColor: selectedPeriod == period
                     ? themeProvider.currentTheme.primaryColor
                     : Colors.grey[300],
-                foregroundColor: selectedPeriod == period ? Colors.white : Colors.black,
+                foregroundColor: selectedPeriod == period
+                    ? Colors.white
+                    : Colors.black,
               ),
               child: Text(period),
             ),
@@ -273,21 +313,13 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
         color: themeProvider.currentTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 8,
-          ),
-        ],
+        boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 8)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
           Text(
             value,
             style: TextStyle(
@@ -310,15 +342,13 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
           color: themeProvider.currentTheme.surfaceColor,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
-          child: Text('No spending data available'),
-        ),
+        child: const Center(child: Text('No spending data available')),
       );
     }
 
     final sortedMonths = monthlySpending.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    
+
     final spots = <FlSpot>[];
     for (int i = 0; i < sortedMonths.length; i++) {
       spots.add(FlSpot(i.toDouble(), sortedMonths[i].value));
@@ -404,7 +434,10 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
     );
   }
 
-  Widget _buildCategoryBreakdown(String currencySymbol, ThemeProvider themeProvider) {
+  Widget _buildCategoryBreakdown(
+    String currencySymbol,
+    ThemeProvider themeProvider,
+  ) {
     if (categoryTrends.isEmpty) {
       return const SizedBox();
     }
@@ -457,7 +490,8 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
                       minHeight: 6,
                       backgroundColor: Colors.grey[300],
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.primaries[entry.key.length % Colors.primaries.length],
+                        Colors.primaries[entry.key.length %
+                            Colors.primaries.length],
                       ),
                     ),
                   ),
@@ -487,10 +521,10 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
           final color = insight.severity == 'high'
               ? Colors.red
               : insight.severity == 'warning'
-                  ? Colors.orange
-                  : insight.severity == 'success'
-                      ? Colors.green
-                      : Colors.blue;
+              ? Colors.orange
+              : insight.severity == 'success'
+              ? Colors.green
+              : Colors.blue;
 
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -532,7 +566,10 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
     );
   }
 
-  Widget _buildSpendingPatterns(String currencySymbol, ThemeProvider themeProvider) {
+  Widget _buildSpendingPatterns(
+    String currencySymbol,
+    ThemeProvider themeProvider,
+  ) {
     final dayOfWeekSpending = <String, double>{
       'Mon': 0,
       'Tue': 0,
@@ -548,8 +585,12 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
         final date = DateTime.parse(exp.date);
         final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         final dayKey = dayNames[date.weekday - 1];
-        final amountInBase = CurrencyService.convertToBase(exp.amount, exp.currency);
-        dayOfWeekSpending[dayKey] = (dayOfWeekSpending[dayKey] ?? 0) + amountInBase;
+        final amountInBase = CurrencyService.convertToBase(
+          exp.amount,
+          exp.currency,
+        );
+        dayOfWeekSpending[dayKey] =
+            (dayOfWeekSpending[dayKey] ?? 0) + amountInBase;
       }
     }
 
@@ -575,18 +616,23 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                barGroups: dayOfWeekSpending.entries.toList().asMap().entries.map((e) {
-                  return BarChartGroupData(
-                    x: e.key,
-                    barRods: [
-                      BarChartRodData(
-                        toY: e.value.value,
-                        color: Colors.blue[400 + (e.key * 100)],
-                        width: 12,
-                      ),
-                    ],
-                  );
-                }).toList(),
+                barGroups: dayOfWeekSpending.entries
+                    .toList()
+                    .asMap()
+                    .entries
+                    .map((e) {
+                      return BarChartGroupData(
+                        x: e.key,
+                        barRods: [
+                          BarChartRodData(
+                            toY: e.value.value,
+                            color: Colors.blue[400 + (e.key * 100)],
+                            width: 12,
+                          ),
+                        ],
+                      );
+                    })
+                    .toList(),
                 titlesData: FlTitlesData(
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
@@ -595,7 +641,10 @@ class _AdvancedAnalyticsScreenState extends State<AdvancedAnalyticsScreen> {
                         final keys = dayOfWeekSpending.keys.toList();
                         final index = value.toInt();
                         if (index >= 0 && index < keys.length) {
-                          return Text(keys[index], style: const TextStyle(fontSize: 10));
+                          return Text(
+                            keys[index],
+                            style: const TextStyle(fontSize: 10),
+                          );
                         }
                         return const SizedBox();
                       },

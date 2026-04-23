@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
 import '../models/category.dart';
+import '../providers/expense_provider.dart';
+import '../utils/currency_service.dart';
 import '../utils/transaction_predictor.dart';
 
 class PredictionsScreen extends StatefulWidget {
@@ -14,6 +17,7 @@ class PredictionsScreen extends StatefulWidget {
 class _PredictionsScreenState extends State<PredictionsScreen> {
   final DBHelper db = DBHelper();
   late Future<Map<String, dynamic>> predictionsFuture;
+  ExpenseProvider? _expenseProvider;
 
   @override
   void initState() {
@@ -21,10 +25,33 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
     predictionsFuture = _loadPredictions();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<ExpenseProvider>();
+    if (_expenseProvider != provider) {
+      _expenseProvider?.removeListener(_refreshPredictions);
+      _expenseProvider = provider;
+      _expenseProvider!.addListener(_refreshPredictions);
+    }
+  }
+
+  @override
+  void dispose() {
+    _expenseProvider?.removeListener(_refreshPredictions);
+    super.dispose();
+  }
+
+  void _refreshPredictions() {
+    setState(() {
+      predictionsFuture = _loadPredictions();
+    });
+  }
+
   Future<Map<String, dynamic>> _loadPredictions() async {
-    final expenses = await db.getExpenses();
+    final expenses = context.read<ExpenseProvider>().expenses;
     final recurring = await db.getRecurringTransactions();
-    
+
     final predictions = TransactionPredictor.getAllPredictions(
       expenses,
       recurring,
@@ -56,10 +83,7 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Predictions & Insights'),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Predictions & Insights'), elevation: 0),
       body: FutureBuilder<Map<String, dynamic>>(
         future: predictionsFuture,
         builder: (context, snapshot) {
@@ -109,7 +133,10 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Rs ${totalPredicted.toStringAsFixed(0)}',
+                        CurrencyService.formatBaseAmount(
+                          totalPredicted,
+                          fractionDigits: 0,
+                        ),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 32,
@@ -137,24 +164,25 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                   const SizedBox(height: 12),
                   ...recurringOnly.map((prediction) {
                     final category = getCategoryByName(prediction.category);
-                    final daysUntil =
-                        prediction.predictedDate.difference(DateTime.now()).inDays;
+                    final daysUntil = prediction.predictedDate
+                        .difference(DateTime.now())
+                        .inDays;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: category.color.withOpacity(0.2),
-                          child: Icon(
-                            category.icon,
-                            color: category.color,
-                          ),
+                          child: Icon(category.icon, color: category.color),
                         ),
                         title: Text(prediction.description),
                         subtitle: Text(
                           'in $daysUntil days • ${prediction.predictedDate.toLocal().toString().split(' ')[0]}',
                         ),
                         trailing: Text(
-                          'Rs ${prediction.amount.toStringAsFixed(0)}',
+                          CurrencyService.formatBaseAmount(
+                            prediction.amount,
+                            fractionDigits: 0,
+                          ),
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             color: Colors.red,
@@ -175,17 +203,15 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                   ...patternOnly.map((prediction) {
                     final category = getCategoryByName(prediction.category);
                     final confidence = (prediction.confidence * 100).toInt();
-                    final daysUntil =
-                        prediction.predictedDate.difference(DateTime.now()).inDays;
+                    final daysUntil = prediction.predictedDate
+                        .difference(DateTime.now())
+                        .inDays;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: category.color.withOpacity(0.2),
-                          child: Icon(
-                            category.icon,
-                            color: category.color,
-                          ),
+                          child: Icon(category.icon, color: category.color),
                         ),
                         title: Text(prediction.description),
                         subtitle: Column(
@@ -201,8 +227,8 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                                 confidence >= 80
                                     ? Colors.green
                                     : confidence >= 60
-                                        ? Colors.orange
-                                        : Colors.grey,
+                                    ? Colors.orange
+                                    : Colors.grey,
                               ),
                             ),
                           ],
@@ -212,7 +238,10 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              'Rs ${prediction.amount.toStringAsFixed(0)}',
+                              CurrencyService.formatBaseAmount(
+                                prediction.amount,
+                                fractionDigits: 0,
+                              ),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                                 color: Colors.red,
@@ -249,22 +278,23 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: category.color.withOpacity(0.2),
-                        child: Icon(
-                          category.icon,
-                          color: category.color,
-                        ),
+                        child: Icon(category.icon, color: category.color),
                       ),
                       title: Text(category.name),
                       subtitle: Row(
                         children: [
                           Icon(
-                            isIncreasing ? Icons.trending_up : Icons.trending_down,
+                            isIncreasing
+                                ? Icons.trending_up
+                                : Icons.trending_down,
                             size: 16,
                             color: isIncreasing ? Colors.red : Colors.green,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            isIncreasing ? 'Spending increasing' : 'Spending decreasing',
+                            isIncreasing
+                                ? 'Spending increasing'
+                                : 'Spending decreasing',
                             style: TextStyle(
                               color: isIncreasing ? Colors.red : Colors.green,
                               fontSize: 12,
@@ -273,10 +303,8 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
                         ],
                       ),
                       trailing: Text(
-                        'Avg: Rs ${avgAmount.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        'Avg: ${CurrencyService.formatBaseAmount(avgAmount, fractionDigits: 0)}',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
                   );
@@ -334,14 +362,18 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
 
     // Find high spending categories
     final sortedByAmount = trends.entries.toList()
-      ..sort((a, b) =>
-          (b.value['avgAmount'] as double)
-              .compareTo(a.value['avgAmount'] as double));
+      ..sort(
+        (a, b) => (b.value['avgAmount'] as double).compareTo(
+          a.value['avgAmount'] as double,
+        ),
+      );
 
     if (sortedByAmount.isNotEmpty) {
       final topCategory = sortedByAmount.first.key;
       final topAmount = sortedByAmount.first.value['avgAmount'] as double;
-      insights.add('You spend the most on $topCategory (~Rs ${topAmount.toStringAsFixed(0)}/month)');
+      insights.add(
+        'You spend the most on $topCategory (~${CurrencyService.formatBaseAmount(topAmount, fractionDigits: 0)}/month)',
+      );
     }
 
     if (insights.isEmpty) {
@@ -351,30 +383,32 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: insights
-          .map((insight) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '• ',
+          .map(
+            (insight) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '• ',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade600,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      insight,
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade600,
+                        color: Colors.blue.shade800,
+                        fontSize: 12,
                       ),
                     ),
-                    Expanded(
-                      child: Text(
-                        insight,
-                        style: TextStyle(
-                          color: Colors.blue.shade800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ))
+                  ),
+                ],
+              ),
+            ),
+          )
           .toList(),
     );
   }

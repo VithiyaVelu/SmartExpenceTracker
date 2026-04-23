@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../db/database_helper.dart';
 import '../models/expense.dart';
 import '../models/category.dart';
+import '../providers/expense_provider.dart';
 import '../utils/currency_service.dart';
 import 'receipt_scanner_screen.dart';
 
@@ -16,10 +17,10 @@ class AddExpenseScreen extends StatefulWidget {
 class _AddExpenseScreenState extends State<AddExpenseScreen> {
   final titleController = TextEditingController();
   final amountController = TextEditingController();
-  final DBHelper db = DBHelper();
   String type = 'expense';
   String category = 'Other';
   String currency = CurrencyService.baseCurrency;
+  DateTime selectedDate = DateTime.now();
 
   @override
   void dispose() {
@@ -39,6 +40,21 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
 
+  Future<void> _pickDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (pickedDate != null && mounted) {
+      setState(() {
+        selectedDate = pickedDate;
+      });
+    }
+  }
+
   Future<void> save() async {
     final title = titleController.text.trim();
     final amount = double.tryParse(amountController.text.trim());
@@ -54,12 +70,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       title: title,
       amount: amount,
       type: type,
-      date: DateTime.now().toIso8601String().substring(0, 10),
+      date: selectedDate.toIso8601String().substring(0, 10),
       category: category,
       currency: currency,
     );
 
-    await db.insertExpense(expense);
+    await context.read<ExpenseProvider>().addExpense(expense);
 
     if (!mounted) {
       return;
@@ -106,7 +122,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: amountController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Amount',
                 border: OutlineInputBorder(),
@@ -176,7 +194,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       const SizedBox(width: 8),
                       Text('${curr.code} - ${curr.name}'),
                       const SizedBox(width: 8),
-                      Text(curr.symbol, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        curr.symbol,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ),
                 );
@@ -188,11 +209,28 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 });
               },
             ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: save,
-              child: const Text('Save'),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: _pickDate,
+              borderRadius: BorderRadius.circular(4),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Date',
+                  border: OutlineInputBorder(),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+                    ),
+                    const Icon(Icons.calendar_today, size: 18),
+                  ],
+                ),
+              ),
             ),
+            const SizedBox(height: 24),
+            ElevatedButton(onPressed: save, child: const Text('Save')),
           ],
         ),
       ),

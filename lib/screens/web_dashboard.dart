@@ -5,6 +5,7 @@ import '../db/database_helper.dart';
 import '../models/expense.dart';
 import '../models/budget.dart';
 import '../utils/currency_service.dart';
+import '../providers/expense_provider.dart';
 import '../providers/theme_provider.dart';
 
 class WebDashboard extends StatefulWidget {
@@ -21,6 +22,7 @@ class _WebDashboardState extends State<WebDashboard> {
   double totalIncome = 0;
   double totalExpense = 0;
   Map<String, double> categorySpending = {};
+  ExpenseProvider? _expenseProvider;
 
   @override
   void initState() {
@@ -28,8 +30,26 @@ class _WebDashboardState extends State<WebDashboard> {
     loadDashboardData();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<ExpenseProvider>();
+    if (_expenseProvider != provider) {
+      _expenseProvider?.removeListener(loadDashboardData);
+      _expenseProvider = provider;
+      _expenseProvider!.addListener(loadDashboardData);
+    }
+  }
+
+  @override
+  void dispose() {
+    _expenseProvider?.removeListener(loadDashboardData);
+    super.dispose();
+  }
+
   Future<void> loadDashboardData() async {
-    final allExpenses = await db.getExpenses();
+    final allExpenses =
+        _expenseProvider?.expenses ?? context.read<ExpenseProvider>().expenses;
     final currentMonth = DateTime.now().toIso8601String().substring(0, 7);
     final monthlyBudgets = await db.getBudgets(currentMonth);
 
@@ -74,7 +94,7 @@ class _WebDashboardState extends State<WebDashboard> {
             padding: const EdgeInsets.all(16),
             child: Center(
               child: Text(
-                '${CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$'} ${(totalIncome - totalExpense).toStringAsFixed(2)}',
+                CurrencyService.formatBaseAmount(totalIncome - totalExpense),
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -97,13 +117,9 @@ class _WebDashboardState extends State<WebDashboard> {
             if (!isMobile)
               Row(
                 children: [
-                  Expanded(
-                    child: _buildExpenseChart(themeProvider),
-                  ),
+                  Expanded(child: _buildExpenseChart(themeProvider)),
                   const SizedBox(width: 24),
-                  Expanded(
-                    child: _buildCategoryChart(themeProvider),
-                  ),
+                  Expanded(child: _buildCategoryChart(themeProvider)),
                 ],
               )
             else ...[
@@ -180,10 +196,7 @@ class _WebDashboardState extends State<WebDashboard> {
       decoration: BoxDecoration(
         color: themeProvider.currentTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 2,
-        ),
+        border: Border.all(color: color.withOpacity(0.3), width: 2),
         boxShadow: [
           BoxShadow(
             color: color.withOpacity(0.1),
@@ -197,15 +210,15 @@ class _WebDashboardState extends State<WebDashboard> {
         children: [
           Text(
             label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[600],
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
               Text(
-                CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$',
+                CurrencyService.baseCurrencySymbol,
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -238,10 +251,7 @@ class _WebDashboardState extends State<WebDashboard> {
         color: themeProvider.currentTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8),
         ],
       ),
       child: Column(
@@ -249,9 +259,9 @@ class _WebDashboardState extends State<WebDashboard> {
         children: [
           Text(
             'Income vs Expense',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -325,9 +335,7 @@ class _WebDashboardState extends State<WebDashboard> {
           color: themeProvider.currentTheme.surfaceColor,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
-          child: Text('No expense data available'),
-        ),
+        child: const Center(child: Text('No expense data available')),
       );
     }
 
@@ -346,10 +354,7 @@ class _WebDashboardState extends State<WebDashboard> {
         color: themeProvider.currentTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8),
         ],
       ),
       child: Column(
@@ -357,20 +362,23 @@ class _WebDashboardState extends State<WebDashboard> {
         children: [
           Text(
             'Spending by Category',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           SizedBox(
             height: 200,
             child: PieChart(
               PieChartData(
-                sections: categorySpending.entries.toList().asMap().entries.map((e) {
+                sections: categorySpending.entries.toList().asMap().entries.map((
+                  e,
+                ) {
                   final color = colors[e.key % colors.length];
                   return PieChartSectionData(
                     value: e.value.value,
-                    title: '${(e.value.value / totalExpense * 100).toStringAsFixed(0)}%',
+                    title:
+                        '${(e.value.value / totalExpense * 100).toStringAsFixed(0)}%',
                     color: color,
                     titleStyle: const TextStyle(
                       color: Colors.white,
@@ -384,7 +392,9 @@ class _WebDashboardState extends State<WebDashboard> {
           ),
           const SizedBox(height: 16),
           ...categorySpending.entries.map((e) {
-            final color = colors[categorySpending.keys.toList().indexOf(e.key) % colors.length];
+            final color =
+                colors[categorySpending.keys.toList().indexOf(e.key) %
+                    colors.length];
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -398,11 +408,12 @@ class _WebDashboardState extends State<WebDashboard> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(e.key),
-                  ),
+                  Expanded(child: Text(e.key)),
                   Text(
-                    '${CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$'}${e.value.toStringAsFixed(0)}',
+                    CurrencyService.formatBaseAmount(
+                      e.value,
+                      fractionDigits: 0,
+                    ),
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -422,9 +433,7 @@ class _WebDashboardState extends State<WebDashboard> {
           color: themeProvider.currentTheme.surfaceColor,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
-          child: Text('No budgets set for this month'),
-        ),
+        child: const Center(child: Text('No budgets set for this month')),
       );
     }
 
@@ -434,10 +443,7 @@ class _WebDashboardState extends State<WebDashboard> {
         color: themeProvider.currentTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8),
         ],
       ),
       child: Column(
@@ -445,9 +451,9 @@ class _WebDashboardState extends State<WebDashboard> {
         children: [
           Text(
             'Budget Status',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           ...budgets.map((budget) {
@@ -490,11 +496,8 @@ class _WebDashboardState extends State<WebDashboard> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$'}${spent.toStringAsFixed(0)} / ${CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$'}${budget.amount.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    '${CurrencyService.formatBaseAmount(spent, fractionDigits: 0)} / ${CurrencyService.formatBaseAmount(budget.amount, fractionDigits: 0)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -514,10 +517,7 @@ class _WebDashboardState extends State<WebDashboard> {
         color: themeProvider.currentTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8),
         ],
       ),
       child: Column(
@@ -525,9 +525,9 @@ class _WebDashboardState extends State<WebDashboard> {
         children: [
           Text(
             'Recent Transactions',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
           if (isMobile)
@@ -543,20 +543,24 @@ class _WebDashboardState extends State<WebDashboard> {
                   DataColumn(label: Text('Amount')),
                 ],
                 rows: recentExpenses.map((e) {
-                  return DataRow(cells: [
-                    DataCell(Text(e.date)),
-                    DataCell(Text(e.title)),
-                    DataCell(Text(e.category)),
-                    DataCell(
-                      Text(
-                        '${e.type == 'income' ? '+' : '-'}${CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$'}${e.amount.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: e.type == 'income' ? Colors.green : Colors.red,
-                          fontWeight: FontWeight.bold,
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(e.date)),
+                      DataCell(Text(e.title)),
+                      DataCell(Text(e.category)),
+                      DataCell(
+                        Text(
+                          '${e.type == 'income' ? '+' : '-'}${CurrencyService.formatBaseAmount(e.amount)}',
+                          style: TextStyle(
+                            color: e.type == 'income'
+                                ? Colors.green
+                                : Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                    ),
-                  ]);
+                    ],
+                  );
                 }).toList(),
               ),
             ),
@@ -569,9 +573,7 @@ class _WebDashboardState extends State<WebDashboard> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[300]!),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -590,7 +592,7 @@ class _WebDashboardState extends State<WebDashboard> {
             ],
           ),
           Text(
-            '${expense.type == 'income' ? '+' : '-'}${CurrencyService.getCurrencyByCode(CurrencyService.baseCurrency)?.symbol ?? '\$'}${expense.amount.toStringAsFixed(2)}',
+            '${expense.type == 'income' ? '+' : '-'}${CurrencyService.formatBaseAmount(expense.amount)}',
             style: TextStyle(
               color: expense.type == 'income' ? Colors.green : Colors.red,
               fontWeight: FontWeight.bold,

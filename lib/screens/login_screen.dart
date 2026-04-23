@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import 'signup_screen.dart';
+import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -27,15 +28,25 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
     await authProvider.signIn(
       _emailController.text.trim(),
       _passwordController.text.trim(),
     );
 
+    if (!mounted) {
+      return;
+    }
+
     if (authProvider.errorMessage != null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(authProvider.errorMessage!)));
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
     }
   }
 
@@ -59,13 +70,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         labelText: 'Email',
                         prefixIcon: Icon(Icons.email),
                       ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        return null;
-                      },
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter email' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -75,45 +81,48 @@ class _LoginScreenState extends State<LoginScreen> {
                         prefixIcon: Icon(Icons.lock),
                       ),
                       obscureText: true,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        return null;
-                      },
+                      validator: (value) =>
+                          value!.isEmpty ? 'Enter password' : null,
                     ),
                     const SizedBox(height: 24),
+
                     ElevatedButton(
                       onPressed: authProvider.isLoading ? null : _submit,
                       child: authProvider.isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
+                          ? const CircularProgressIndicator()
                           : const Text('Sign In'),
                     ),
+
                     const SizedBox(height: 12),
+
                     TextButton(
-                      onPressed: authProvider.isLoading
-                          ? null
-                          : () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const SignupScreen(),
-                                ),
-                              );
-                            },
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SignupScreen(),
+                          ),
+                        );
+                      },
                       child: const Text('Create an account'),
                     ),
+
                     const SizedBox(height: 12),
+
                     OutlinedButton(
-                      onPressed: authProvider.isLoading
-                          ? null
-                          : () {
-                              authProvider.skipAuth();
-                            },
+                      onPressed: () {
+                        Provider.of<AuthProvider>(
+                          context,
+                          listen: false,
+                        ).skipAuth();
+
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const HomeScreen(),
+                          ),
+                        );
+                      },
                       child: const Text('Use without signing in'),
                     ),
                   ],

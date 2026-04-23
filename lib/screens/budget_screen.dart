@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../db/database_helper.dart';
-import '../models/expense.dart';
 import '../models/budget.dart';
 import '../models/category.dart';
+import '../providers/expense_provider.dart';
+import '../services/budget_notification_service.dart';
+import '../utils/currency_service.dart';
 
 class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
@@ -17,7 +20,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   final currentMonth = DateTime.now().toIso8601String().substring(0, 7);
   Map<String, double> budgets = {};
   Map<String, double> currentSpending = {};
-  List<Expense> expenses = [];
+  ExpenseProvider? _expenseProvider;
 
   @override
   void initState() {
@@ -25,10 +28,26 @@ class _BudgetScreenState extends State<BudgetScreen> {
     loadData();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = context.read<ExpenseProvider>();
+    if (_expenseProvider != provider) {
+      _expenseProvider?.removeListener(loadData);
+      _expenseProvider = provider;
+      _expenseProvider!.addListener(loadData);
+    }
+  }
+
+  @override
+  void dispose() {
+    _expenseProvider?.removeListener(loadData);
+    super.dispose();
+  }
+
   Future<void> loadData() async {
-    // Load expenses
-    final allExpenses = await db.getExpenses();
-    
+    final allExpenses = context.read<ExpenseProvider>().expenses;
+
     // Load budgets
     final budgetList = await db.getBudgets(currentMonth);
     final Map<String, double> budgetMap = {};
@@ -40,14 +59,18 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final Map<String, double> spending = {};
     for (final expense in allExpenses) {
       if (expense.type == 'expense' && expense.date.startsWith(currentMonth)) {
-        spending[expense.category] = (spending[expense.category] ?? 0) + expense.amount;
+        final convertedAmount = CurrencyService.convertToBase(
+          expense.amount,
+          expense.currency,
+        );
+        spending[expense.category] =
+            (spending[expense.category] ?? 0) + convertedAmount;
       }
     }
 
     if (!mounted) return;
 
     setState(() {
-      expenses = allExpenses;
       budgets = budgetMap;
       currentSpending = spending;
     });
@@ -55,18 +78,28 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Map<String, double> getAverageSpending() {
     final Map<String, double> monthlySpending = {};
-    final Map<String, int> monthCount = {};
+    final Map<String, Set<String>> monthsPerCategory = {};
+    final expenses = context.read<ExpenseProvider>().expenses;
 
     for (final expense in expenses) {
       if (expense.type == 'expense') {
-        monthlySpending[expense.category] = (monthlySpending[expense.category] ?? 0) + expense.amount;
-        monthCount[expense.category] = (monthCount[expense.category] ?? 0) + 1;
+        final convertedAmount = CurrencyService.convertToBase(
+          expense.amount,
+          expense.currency,
+        );
+        monthlySpending[expense.category] =
+            (monthlySpending[expense.category] ?? 0) + convertedAmount;
+        monthsPerCategory.putIfAbsent(expense.category, () => <String>{});
+        monthsPerCategory[expense.category]!.add(expense.date.substring(0, 7));
       }
     }
 
     final Map<String, double> average = {};
     for (final category in monthlySpending.keys) {
-      average[category] = monthlySpending[category]! / monthCount[category]!;
+      final months = monthsPerCategory[category]?.length ?? 0;
+      if (months > 0) {
+        average[category] = monthlySpending[category]! / months;
+      }
     }
 
     return average;
@@ -74,7 +107,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Future<void> suggestBudgets() async {
     final average = getAverageSpending();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -91,7 +124,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(entry.key),
-                    Text('Rs ${suggested.toStringAsFixed(0)}'),
+                    Text(
+                      '${CurrencyService.baseCurrencySymbol} ${suggested.toStringAsFixed(0)}',
+                    ),
                   ],
                 ),
               );
@@ -126,19 +161,31 @@ class _BudgetScreenState extends State<BudgetScreen> {
       await db.insertBudget(budget);
     }
     await loadData();
+    await _refreshBudgetAlerts();
   }
 
   Future<void> setBudget(String category, double amount) async {
     if (amount <= 0) return;
-    
+
     final budget = Budget(
       category: category,
       amount: amount,
       month: currentMonth,
     );
-    
+
     await db.insertBudget(budget);
     await loadData();
+    await _refreshBudgetAlerts();
+  }
+
+  Future<void> _refreshBudgetAlerts() async {
+    final expenses = context.read<ExpenseProvider>().expenses;
+    final budgetList = await db.getBudgets(currentMonth);
+    await BudgetNotificationService.instance.checkBudgetAlerts(
+      budgets: budgetList,
+      expenses: expenses,
+      month: currentMonth,
+    );
   }
 
   @override
@@ -151,9 +198,11 @@ class _BudgetScreenState extends State<BudgetScreen> {
             icon: const Icon(Icons.lightbulb),
             tooltip: 'Smart Suggestions',
             onPressed: () {
-              if (expenses.isEmpty) {
+              if (context.read<ExpenseProvider>().expenses.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Add transactions to get budget suggestions')),
+                  const SnackBar(
+                    content: Text('Add transactions to get budget suggestions'),
+                  ),
                 );
               } else {
                 suggestBudgets();
@@ -169,11 +218,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
           final category = predefinedCategories[index];
           final budget = budgets[category.name] ?? 0;
           final spent = currentSpending[category.name] ?? 0;
-          final percentage = budget > 0 ? (spent / budget * 100).clamp(0, 100) : 0;
-          
+          final percentage = budget > 0
+              ? (spent / budget * 100).clamp(0, 100)
+              : 0;
+
           Color progressColor = Colors.green;
           String statusText = 'On Track';
-          
+
           if (budget > 0) {
             if (spent >= budget) {
               progressColor = Colors.red;
@@ -194,7 +245,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: category.color.withOpacity(0.2),
+                        backgroundColor: category.color.withValues(alpha: 0.2),
                         child: Icon(category.icon, color: category.color),
                       ),
                       const SizedBox(width: 12),
@@ -211,7 +262,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                             ),
                             if (budget > 0)
                               Text(
-                                'Rs ${spent.toStringAsFixed(0)} / Rs ${budget.toStringAsFixed(0)}',
+                                '${CurrencyService.baseCurrencySymbol} ${spent.toStringAsFixed(0)} / ${CurrencyService.baseCurrencySymbol} ${budget.toStringAsFixed(0)}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey[600],
@@ -239,7 +290,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         value: percentage / 100,
                         minHeight: 8,
                         backgroundColor: Colors.grey[300],
-                        valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          progressColor,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -265,11 +318,11 @@ class BudgetInputField extends StatefulWidget {
   final Function(double) onSet;
 
   const BudgetInputField({
-    Key? key,
+    super.key,
     required this.category,
     required this.currentBudget,
     required this.onSet,
-  }) : super(key: key);
+  });
 
   @override
   State<BudgetInputField> createState() => _BudgetInputFieldState();
@@ -282,7 +335,9 @@ class _BudgetInputFieldState extends State<BudgetInputField> {
   void initState() {
     super.initState();
     controller = TextEditingController(
-      text: widget.currentBudget > 0 ? widget.currentBudget.toStringAsFixed(0) : '',
+      text: widget.currentBudget > 0
+          ? widget.currentBudget.toStringAsFixed(0)
+          : '',
     );
   }
 
@@ -303,7 +358,10 @@ class _BudgetInputFieldState extends State<BudgetInputField> {
             decoration: InputDecoration(
               hintText: 'Set budget',
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(4),
               ),
@@ -317,7 +375,11 @@ class _BudgetInputFieldState extends State<BudgetInputField> {
             if (amount != null && amount > 0) {
               widget.onSet(amount);
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Budget for ${widget.category} set to Rs ${amount.toStringAsFixed(0)}')),
+                SnackBar(
+                  content: Text(
+                    'Budget for ${widget.category} set to ${CurrencyService.baseCurrencySymbol} ${amount.toStringAsFixed(0)}',
+                  ),
+                ),
               );
             }
           },

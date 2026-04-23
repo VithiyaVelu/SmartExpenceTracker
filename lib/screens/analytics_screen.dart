@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
 
-import '../db/database_helper.dart';
 import '../models/expense.dart';
 import '../models/category.dart';
+import '../providers/expense_provider.dart';
+import '../utils/currency_service.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -12,16 +14,14 @@ class AnalyticsScreen extends StatefulWidget {
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderStateMixin {
-  final DBHelper db = DBHelper();
-  List<Expense> expenses = [];
+class _AnalyticsScreenState extends State<AnalyticsScreen>
+    with TickerProviderStateMixin {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    loadData();
   }
 
   @override
@@ -30,33 +30,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
     super.dispose();
   }
 
-  Future<void> loadData() async {
-    final data = await db.getExpenses();
-    if (!mounted) return;
-    setState(() {
-      expenses = data;
-    });
-  }
-
   String _getMonthName(int month) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return months[month - 1];
   }
 
-  Map<String, double> getCategorySpending() {
+  Map<String, double> getCategorySpending(List<Expense> expenses) {
     final Map<String, double> spending = {};
     for (final expense in expenses) {
       if (expense.type == 'expense') {
-        spending[expense.category] = (spending[expense.category] ?? 0) + expense.amount;
+        spending[expense.category] =
+            (spending[expense.category] ?? 0) + expense.amount;
       }
     }
     return spending;
   }
 
-  Map<String, double> getMonthlySpending() {
+  Map<String, double> getMonthlySpending(List<Expense> expenses) {
     final Map<String, double> monthly = {};
     for (final expense in expenses) {
       if (expense.type == 'expense') {
@@ -66,21 +69,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
     }
     // Sort by month
     final sorted = Map.fromEntries(
-      monthly.entries.toList()..sort((a, b) => a.key.compareTo(b.key))
+      monthly.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
     );
     return sorted;
   }
 
-  List<String> getInsights() {
+  List<String> getInsights(List<Expense> expenses) {
     final insights = <String>[];
-    final categorySpending = getCategorySpending();
-    final monthlySpending = getMonthlySpending();
+    final categorySpending = getCategorySpending(expenses);
+    final monthlySpending = getMonthlySpending(expenses);
 
     if (categorySpending.isEmpty) return insights;
 
     // Find highest spending category
-    final topCategory = categorySpending.entries.reduce((a, b) => a.value > b.value ? a : b);
-    insights.add('Your highest spending category is ${topCategory.key} with Rs ${topCategory.value.toStringAsFixed(2)}');
+    final topCategory = categorySpending.entries.reduce(
+      (a, b) => a.value > b.value ? a : b,
+    );
+    insights.add(
+      'Your highest spending category is ${topCategory.key} with ${CurrencyService.formatBaseAmount(topCategory.value)}',
+    );
 
     // Monthly comparison
     final sortedMonths = monthlySpending.keys.toList()..sort();
@@ -89,12 +96,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
       final previousMonth = sortedMonths[sortedMonths.length - 2];
       final currentAmount = monthlySpending[currentMonth]!;
       final previousAmount = monthlySpending[previousMonth]!;
-      final change = ((currentAmount - previousAmount) / previousAmount * 100).round();
+      final change = ((currentAmount - previousAmount) / previousAmount * 100)
+          .round();
 
       if (change > 0) {
-        insights.add('You spent ${change.abs()}% more this month compared to last month');
+        insights.add(
+          'You spent ${change.abs()}% more this month compared to last month',
+        );
       } else if (change < 0) {
-        insights.add('You spent ${change.abs()}% less this month compared to last month');
+        insights.add(
+          'You spent ${change.abs()}% less this month compared to last month',
+        );
       } else {
         insights.add('Your spending remained the same as last month');
       }
@@ -105,9 +117,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final categorySpending = getCategorySpending();
-    final monthlySpending = getMonthlySpending();
-    final insights = getInsights();
+    final expenses = context.watch<ExpenseProvider>().expenses;
+    final categorySpending = getCategorySpending(expenses);
+    final monthlySpending = getMonthlySpending(expenses);
+    final insights = getInsights(expenses);
 
     return Scaffold(
       appBar: AppBar(
@@ -133,7 +146,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                     children: [
                       const Text(
                         'Spending by Category',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       Expanded(
@@ -143,7 +159,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                               final category = getCategoryByName(entry.key);
                               return PieChartSectionData(
                                 value: entry.value,
-                                title: '${entry.key}\n${entry.value.toStringAsFixed(0)}',
+                                title:
+                                    '${entry.key}\n${entry.value.toStringAsFixed(0)}',
                                 color: category.color,
                                 radius: 100,
                                 titleStyle: const TextStyle(
@@ -169,7 +186,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                     children: [
                       const Text(
                         'Spending Trends',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       Expanded(
@@ -181,10 +201,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                                 sideTitles: SideTitles(
                                   showTitles: true,
                                   getTitlesWidget: (value, meta) {
-                                    final months = monthlySpending.keys.toList();
-                                    if (value.toInt() >= 0 && value.toInt() < months.length) {
+                                    final months = monthlySpending.keys
+                                        .toList();
+                                    if (value.toInt() >= 0 &&
+                                        value.toInt() < months.length) {
                                       final monthStr = months[value.toInt()];
-                                      final monthName = _getMonthName(int.parse(monthStr.split('-')[1]));
+                                      final monthName = _getMonthName(
+                                        int.parse(monthStr.split('-')[1]),
+                                      );
                                       return Padding(
                                         padding: const EdgeInsets.only(top: 8),
                                         child: Text(
@@ -210,14 +234,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                                   reservedSize: 40,
                                 ),
                               ),
-                              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
                             ),
                             borderData: FlBorderData(show: true),
                             lineBarsData: [
                               LineChartBarData(
                                 spots: monthlySpending.entries.map((entry) {
-                                  final index = monthlySpending.keys.toList().indexOf(entry.key);
+                                  final index = monthlySpending.keys
+                                      .toList()
+                                      .indexOf(entry.key);
                                   return FlSpot(index.toDouble(), entry.value);
                                 }).toList(),
                                 isCurved: true,
@@ -247,16 +277,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                     children: [
                       const Text(
                         'Monthly Spending',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       Expanded(
                         child: BarChart(
                           BarChartData(
                             alignment: BarChartAlignment.spaceAround,
-                            maxY: monthlySpending.values.isEmpty ? 100 : (monthlySpending.values.reduce((a, b) => a > b ? a : b) * 1.2),
+                            maxY: monthlySpending.values.isEmpty
+                                ? 100
+                                : (monthlySpending.values.reduce(
+                                        (a, b) => a > b ? a : b,
+                                      ) *
+                                      1.2),
                             barGroups: monthlySpending.entries.map((entry) {
-                              final index = monthlySpending.keys.toList().indexOf(entry.key);
+                              final index = monthlySpending.keys
+                                  .toList()
+                                  .indexOf(entry.key);
                               return BarChartGroupData(
                                 x: index,
                                 barRods: [
@@ -274,10 +314,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                                 sideTitles: SideTitles(
                                   showTitles: true,
                                   getTitlesWidget: (value, meta) {
-                                    final months = monthlySpending.keys.toList();
-                                    if (value.toInt() >= 0 && value.toInt() < months.length) {
+                                    final months = monthlySpending.keys
+                                        .toList();
+                                    if (value.toInt() >= 0 &&
+                                        value.toInt() < months.length) {
                                       final monthStr = months[value.toInt()];
-                                      final monthName = _getMonthName(int.parse(monthStr.split('-')[1]));
+                                      final monthName = _getMonthName(
+                                        int.parse(monthStr.split('-')[1]),
+                                      );
                                       return Padding(
                                         padding: const EdgeInsets.only(top: 8),
                                         child: Text(
@@ -303,8 +347,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                                   reservedSize: 40,
                                 ),
                               ),
-                              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              topTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
                             ),
                             gridData: FlGridData(show: true),
                             borderData: FlBorderData(show: false),
@@ -325,14 +373,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with TickerProviderSt
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    '💡 Insights',
+                    'Insights',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
-                  ...insights.map((insight) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text('• $insight'),
-                      )),
+                  ...insights.map(
+                    (insight) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('• $insight'),
+                    ),
+                  ),
                 ],
               ),
             )

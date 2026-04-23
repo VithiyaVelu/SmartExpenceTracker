@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../db/database_helper.dart';
 import '../models/category.dart';
+import '../providers/expense_provider.dart';
+import '../utils/currency_service.dart';
 
 class CategoriesScreen extends StatefulWidget {
   const CategoriesScreen({super.key});
@@ -11,34 +13,18 @@ class CategoriesScreen extends StatefulWidget {
 }
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
-  final DBHelper db = DBHelper();
-  Map<String, double> categoryTotals = {};
-
   @override
-  void initState() {
-    super.initState();
-    loadCategoryData();
-  }
-
-  Future<void> loadCategoryData() async {
-    final expenses = await db.getExpenses();
-    final Map<String, double> totals = {};
+  Widget build(BuildContext context) {
+    final expenses = context.watch<ExpenseProvider>().expenses;
+    final Map<String, double> categoryTotals = {};
 
     for (final expense in expenses) {
       if (expense.type == 'expense') {
-        totals[expense.category] = (totals[expense.category] ?? 0) + expense.amount;
+        categoryTotals[expense.category] =
+            (categoryTotals[expense.category] ?? 0) + expense.amount;
       }
     }
 
-    if (!mounted) return;
-
-    setState(() {
-      categoryTotals = totals;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
     final sortedCategories = categoryTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -52,7 +38,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               itemBuilder: (context, index) {
                 final entry = sortedCategories[index];
                 final category = getCategoryByName(entry.key);
-                final percentage = (entry.value / categoryTotals.values.reduce((a, b) => a + b)) * 100;
+                final percentage =
+                    (entry.value /
+                        categoryTotals.values.reduce((a, b) => a + b)) *
+                    100;
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -62,9 +51,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                       child: Icon(category.icon, color: category.color),
                     ),
                     title: Text(category.name),
-                    subtitle: Text('${percentage.toStringAsFixed(1)}% of total expenses'),
+                    subtitle: Text(
+                      '${percentage.toStringAsFixed(1)}% of total expenses',
+                    ),
                     trailing: Text(
-                      'Rs ${entry.value.toStringAsFixed(2)}',
+                      CurrencyService.formatBaseAmount(entry.value),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,

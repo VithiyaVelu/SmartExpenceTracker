@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/recurring_transaction.dart';
 import '../models/category.dart';
+import '../utils/currency_service.dart';
 
 class RecurringTransactionsScreen extends StatefulWidget {
   const RecurringTransactionsScreen({super.key});
@@ -27,14 +28,21 @@ class _RecurringTransactionsScreenState
     final data = await db.getRecurringTransactions();
     if (!mounted) return;
     setState(() {
-      recurringTransactions = data..sort((a, b) {
-        // Sort by frequency, then by category
-        final freqOrder = {'weekly': 0, 'biweekly': 1, 'monthly': 2, 'quarterly': 3, 'yearly': 4};
-        final aOrder = freqOrder[a.frequency] ?? 5;
-        final bOrder = freqOrder[b.frequency] ?? 5;
-        if (aOrder != bOrder) return aOrder.compareTo(bOrder);
-        return a.category.compareTo(b.category);
-      });
+      recurringTransactions = data
+        ..sort((a, b) {
+          // Sort by frequency, then by category
+          final freqOrder = {
+            'weekly': 0,
+            'biweekly': 1,
+            'monthly': 2,
+            'quarterly': 3,
+            'yearly': 4,
+          };
+          final aOrder = freqOrder[a.frequency] ?? 5;
+          final bOrder = freqOrder[b.frequency] ?? 5;
+          if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+          return a.category.compareTo(b.category);
+        });
     });
   }
 
@@ -76,14 +84,10 @@ class _RecurringTransactionsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final activeCount =
-        recurringTransactions.where((r) => r.isActive).length;
+    final activeCount = recurringTransactions.where((r) => r.isActive).length;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Recurring Transactions'),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Recurring Transactions'), elevation: 0),
       body: Column(
         children: [
           // Summary card
@@ -105,17 +109,17 @@ class _RecurringTransactionsScreenState
                 children: [
                   Text(
                     'Active Recurring',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white70,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium?.copyWith(color: Colors.white70),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '$activeCount transactions',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -132,9 +136,8 @@ class _RecurringTransactionsScreenState
                         const SizedBox(height: 16),
                         Text(
                           'No recurring transactions',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey[500],
-                              ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: Colors.grey[500]),
                         ),
                       ],
                     ),
@@ -155,10 +158,7 @@ class _RecurringTransactionsScreenState
                           ),
                           leading: CircleAvatar(
                             backgroundColor: category.color.withOpacity(0.2),
-                            child: Icon(
-                              category.icon,
-                              color: category.color,
-                            ),
+                            child: Icon(category.icon, color: category.color),
                           ),
                           title: Text(recurring.title),
                           subtitle: Column(
@@ -169,7 +169,10 @@ class _RecurringTransactionsScreenState
                                 style: const TextStyle(fontSize: 12),
                               ),
                               Text(
-                                'Rs ${recurring.amount.toStringAsFixed(0)}',
+                                CurrencyService.formatBaseAmount(
+                                  recurring.amount,
+                                  fractionDigits: 0,
+                                ),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: recurring.type == 'income'
@@ -189,9 +192,11 @@ class _RecurringTransactionsScreenState
                                 },
                               ),
                               PopupMenuItem(
-                                child: Text(recurring.isActive
-                                    ? 'Deactivate'
-                                    : 'Activate'),
+                                child: Text(
+                                  recurring.isActive
+                                      ? 'Deactivate'
+                                      : 'Activate',
+                                ),
                                 onTap: () {
                                   toggleActive(recurring);
                                 },
@@ -226,11 +231,7 @@ class AddRecurringDialog extends StatefulWidget {
   final RecurringTransaction? recurring;
   final Function(RecurringTransaction) onSave;
 
-  const AddRecurringDialog({
-    super.key,
-    this.recurring,
-    required this.onSave,
-  });
+  const AddRecurringDialog({super.key, this.recurring, required this.onSave});
 
   @override
   State<AddRecurringDialog> createState() => _AddRecurringDialogState();
@@ -247,13 +248,7 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
   late int dayOfMonth;
   final DBHelper db = DBHelper();
 
-  final frequencies = [
-    'weekly',
-    'biweekly',
-    'monthly',
-    'quarterly',
-    'yearly',
-  ];
+  final frequencies = ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'];
   final frequencyLabels = {
     'weekly': 'Weekly',
     'biweekly': 'Every 2 Weeks',
@@ -267,8 +262,9 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
     super.initState();
     if (widget.recurring != null) {
       titleController = TextEditingController(text: widget.recurring!.title);
-      amountController =
-          TextEditingController(text: widget.recurring!.amount.toString());
+      amountController = TextEditingController(
+        text: widget.recurring!.amount.toString(),
+      );
       selectedCategory = widget.recurring!.category;
       selectedFrequency = widget.recurring!.frequency;
       selectedType = widget.recurring!.type;
@@ -298,9 +294,9 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
 
   Future<void> _save() async {
     if (titleController.text.isEmpty || amountController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
@@ -363,7 +359,7 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        prefix: const Text('Rs '),
+                        prefix: Text('${CurrencyService.baseCurrencySymbol} '),
                       ),
                     ),
                   ),
@@ -372,17 +368,19 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
                     child: DropdownButtonFormField(
                       value: selectedType,
                       items: ['income', 'expense']
-                          .map((type) => DropdownMenuItem(
-                                value: type,
-                                child: Text(
-                                  type.toUpperCase(),
-                                  style: TextStyle(
-                                    color: type == 'income'
-                                        ? Colors.green
-                                        : Colors.red,
-                                  ),
+                          .map(
+                            (type) => DropdownMenuItem(
+                              value: type,
+                              child: Text(
+                                type.toUpperCase(),
+                                style: TextStyle(
+                                  color: type == 'income'
+                                      ? Colors.green
+                                      : Colors.red,
                                 ),
-                              ))
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: (value) {
                         if (value != null) {
@@ -402,16 +400,18 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
               DropdownButtonFormField(
                 value: selectedCategory,
                 items: getCategories()
-                    .map((cat) => DropdownMenuItem(
-                          value: cat.name,
-                          child: Row(
-                            children: [
-                              Icon(cat.icon, size: 20, color: cat.color),
-                              const SizedBox(width: 8),
-                              Text(cat.name),
-                            ],
-                          ),
-                        ))
+                    .map(
+                      (cat) => DropdownMenuItem(
+                        value: cat.name,
+                        child: Row(
+                          children: [
+                            Icon(cat.icon, size: 20, color: cat.color),
+                            const SizedBox(width: 8),
+                            Text(cat.name),
+                          ],
+                        ),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) {
                   if (value != null) {
@@ -429,10 +429,12 @@ class _AddRecurringDialogState extends State<AddRecurringDialog> {
               DropdownButtonFormField(
                 value: selectedFrequency,
                 items: frequencies
-                    .map((freq) => DropdownMenuItem(
-                          value: freq,
-                          child: Text(frequencyLabels[freq] ?? freq),
-                        ))
+                    .map(
+                      (freq) => DropdownMenuItem(
+                        value: freq,
+                        child: Text(frequencyLabels[freq] ?? freq),
+                      ),
+                    )
                     .toList(),
                 onChanged: (value) {
                   if (value != null) {

@@ -14,7 +14,12 @@ class CurrencyService {
     Currency(code: 'GBP', name: 'British Pound', symbol: '£', flag: '🇬🇧'),
     Currency(code: 'JPY', name: 'Japanese Yen', symbol: '¥', flag: '🇯🇵'),
     Currency(code: 'CAD', name: 'Canadian Dollar', symbol: 'C\$', flag: '🇨🇦'),
-    Currency(code: 'AUD', name: 'Australian Dollar', symbol: 'A\$', flag: '🇦🇺'),
+    Currency(
+      code: 'AUD',
+      name: 'Australian Dollar',
+      symbol: 'A\$',
+      flag: '🇦🇺',
+    ),
     Currency(code: 'CHF', name: 'Swiss Franc', symbol: 'CHF', flag: '🇨🇭'),
     Currency(code: 'CNY', name: 'Chinese Yuan', symbol: '¥', flag: '🇨🇳'),
     Currency(code: 'INR', name: 'Indian Rupee', symbol: '₹', flag: '🇮🇳'),
@@ -27,6 +32,10 @@ class CurrencyService {
 
   // Get current base currency
   static String get baseCurrency => _baseCurrency;
+
+  // Get current base currency symbol
+  static String get baseCurrencySymbol =>
+      getCurrencyByCode(_baseCurrency)?.symbol ?? '\$';
 
   // Set base currency
   static Future<void> setBaseCurrency(String currency) async {
@@ -56,7 +65,10 @@ class CurrencyService {
         // Cache rates
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('exchange_rates', json.encode(_exchangeRates));
-        await prefs.setString('rates_last_updated', _lastUpdated!.toIso8601String());
+        await prefs.setString(
+          'rates_last_updated',
+          _lastUpdated!.toIso8601String(),
+        );
 
         return true;
       }
@@ -128,6 +140,10 @@ class CurrencyService {
     return '${currency?.symbol ?? '\$'}${amount.toStringAsFixed(2)}';
   }
 
+  static String formatBaseAmount(double amount, {int fractionDigits = 2}) {
+    return '$baseCurrencySymbol ${amount.toStringAsFixed(fractionDigits)}';
+  }
+
   // Check if rates are stale (older than 1 hour)
   static bool get areRatesStale {
     if (_lastUpdated == null) return true;
@@ -135,19 +151,25 @@ class CurrencyService {
   }
 
   // Get exchange rates history for trend analysis
-  static Future<Map<String, List<double>>> getCurrencyTrends(String baseCurrency, int days) async {
+  static Future<Map<String, List<double>>> getCurrencyTrends(
+    String baseCurrency,
+    int days,
+  ) async {
     // This would typically fetch historical data from an API
     // For now, return mock data
     final trends = <String, List<double>>{};
 
-    for (final currency in supportedCurrencies.where((c) => c.code != baseCurrency)) {
+    for (final currency in supportedCurrencies.where(
+      (c) => c.code != baseCurrency,
+    )) {
       // Generate mock trend data (in a real app, this would come from an API)
       final rates = <double>[];
       double currentRate = getExchangeRate(baseCurrency, currency.code);
 
       for (int i = 0; i < days; i++) {
         // Add some random variation for demo purposes
-        final variation = (currentRate * 0.02) * (0.5 - (i % 2)); // Simple mock variation
+        final variation =
+            (currentRate * 0.02) * (0.5 - (i % 2)); // Simple mock variation
         rates.add(currentRate + variation);
       }
 
@@ -158,7 +180,9 @@ class CurrencyService {
   }
 
   // Analyze currency trends
-  static Map<String, dynamic> analyzeCurrencyTrends(Map<String, List<double>> trends) {
+  static Map<String, dynamic> analyzeCurrencyTrends(
+    Map<String, List<double>> trends,
+  ) {
     final analysis = <String, dynamic>{};
 
     for (final entry in trends.entries) {
@@ -174,7 +198,11 @@ class CurrencyService {
 
       // Calculate volatility (standard deviation)
       final mean = rates.reduce((a, b) => a + b) / rates.length;
-      final variance = rates.map((rate) => (rate - mean) * (rate - mean)).reduce((a, b) => a + b) / rates.length;
+      final variance =
+          rates
+              .map((rate) => (rate - mean) * (rate - mean))
+              .reduce((a, b) => a + b) /
+          rates.length;
       final volatility = math.sqrt(variance);
 
       analysis[currency] = {
