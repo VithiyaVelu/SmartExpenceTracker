@@ -1,5 +1,3 @@
-import '../models/category.dart';
-
 class ReceiptData {
   String merchant;
   double amount;

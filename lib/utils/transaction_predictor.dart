@@ -99,8 +99,6 @@ class TransactionPredictor {
     List<Expense> expenses,
   ) {
     final patterns = <String, Map<String, dynamic>>{};
-    final today = DateTime.now();
-    final last90Days = today.subtract(const Duration(days: 90));
 
     // Filter expenses from last 90 days
     final recentExpenses =
@@ -269,7 +267,7 @@ class TransactionPredictor {
     double avgAmount = 0;
 
     if (trend.isNotEmpty) {
-      avgAmount = trend.values.fold(0.0, (sum, e) => (sum as double) + e) /
+      avgAmount = trend.values.fold(0.0, (sum, e) => sum + e) /
           trend.length;
 
       final values = trend.values.toList();

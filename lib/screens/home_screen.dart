@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../db/database_helper.dart';
 import '../models/expense.dart';
 import '../models/category.dart';
-import '../models/budget.dart';
 import '../utils/transaction_predictor.dart';
 import '../utils/currency_service.dart';
 import '../providers/theme_provider.dart';

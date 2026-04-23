@@ -1,5 +1,3 @@
-import 'currency.dart';
-
 class Expense {
   int? id;
   String title;

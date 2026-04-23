@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../db/database_helper.dart';
-import '../models/expense.dart';
-import '../models/recurring_transaction.dart';
 import '../models/category.dart';
 import '../utils/transaction_predictor.dart';
 
@@ -36,7 +34,7 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
     // Calculate total predicted expenses
     final totalPredicted = predictions
         .where((p) => p.reason == 'recurring')
-        .fold(0.0, (sum, p) => (sum as double) + p.amount);
+        .fold(0.0, (sum, p) => sum + p.amount);
 
     // Get category trends
     final trends = <String, Map<String, dynamic>>{};
@@ -53,10 +51,6 @@ class _PredictionsScreenState extends State<PredictionsScreen> {
       'totalPredicted': totalPredicted,
       'trends': trends,
     };
-  }
-
-  String _getMonthKey(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}';
   }
 
   @override

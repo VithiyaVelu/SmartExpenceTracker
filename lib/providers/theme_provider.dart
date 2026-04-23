@@ -92,8 +92,6 @@ class ThemeProvider extends ChangeNotifier {
         return AppTheme.sunset;
       case SpendingMood.danger:
         return AppTheme.dark;
-      default:
-        return AppTheme.light;
     }
   }
 
@@ -107,8 +105,6 @@ class ThemeProvider extends ChangeNotifier {
         return Colors.orange;
       case SpendingMood.danger:
         return Colors.red;
-      default:
-        return Colors.blue;
     }
   }
 
@@ -128,8 +124,6 @@ class ThemeProvider extends ChangeNotifier {
         return Icons.sentiment_neutral;
       case SpendingMood.danger:
         return Icons.sentiment_dissatisfied;
-      default:
-        return Icons.sentiment_satisfied;
     }
   }
 
@@ -143,8 +137,6 @@ class ThemeProvider extends ChangeNotifier {
         return 'Approaching your budget limit';
       case SpendingMood.danger:
         return 'Over budget — take action';
-      default:
-        return 'Spending status available soon';
     }
   }
 }

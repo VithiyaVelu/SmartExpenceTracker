@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import '../models/currency.dart';
 
 class CurrencyService {
-  static const String _apiKey = 'YOUR_EXCHANGE_RATE_API_KEY'; // Replace with actual API key
   static const String _baseUrl = 'https://api.exchangerate-api.com/v4/latest/';
 
   // Common currencies

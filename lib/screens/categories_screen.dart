@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../db/database_helper.dart';
-import '../models/expense.dart';
 import '../models/category.dart';
 
 class CategoriesScreen extends StatefulWidget {
